@@ -1,0 +1,12 @@
+{
+  "name": "digit-recognition",
+  "version": "1.0.0",
+  "description": "MNIST digit recognition",
+  "type": "module",
+  "scripts": {
+    "train": "node model/train-network.js"
+  },
+  "dependencies": {
+    "mnist-data": "^1.2.6"
+  }
+}
