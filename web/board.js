@@ -15,8 +15,6 @@ export class Board {
     canvasElement.addEventListener('pointermove', (event) => this.draw(event));
     canvasElement.addEventListener('pointerup', () => this.stopDrawing());
     canvasElement.addEventListener('pointerleave', () => this.stopDrawing());
-    canvasElement.addEventListener('touchstart', (event) => event.preventDefault(), { passive: false });
-    canvasElement.addEventListener('touchmove', (event) => event.preventDefault(), { passive: false });
 
     this.reset();
   }
