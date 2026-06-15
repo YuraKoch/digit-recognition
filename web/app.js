@@ -1,12 +1,16 @@
 import { NeuralNetwork } from '../model/neural-network.js';
 import { Board } from './board.js';
-import weights from '../weights.json' with { type: 'json' };
 
 const canvasElement = document.getElementById('canvas');
 const resultElement = document.getElementById('result');
 
+resultElement.textContent = 'loading model...';
+
+const response = await fetch('./weights.json');
+const weights = await response.json();
 const network = new NeuralNetwork();
 network.loadWeights(weights);
+resultElement.textContent = '';
 
 const board = new Board(canvasElement, resultElement, network);
 
