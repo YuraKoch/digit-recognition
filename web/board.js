@@ -1,7 +1,9 @@
 import { indexOfHighestValue } from '../model/helpers.js';
 
-const STROKE_WIDTH = 22;
+const STROKE_WIDTH = 20;
 const INPUT_SIZE = 28;
+const DRAWN_PIXEL_THRESHOLD = 10;
+const MIN_PROBABILITY_TO_PREDICT = 0.8;
 
 export class Board {
   constructor(canvasElement, resultElement, network) {
@@ -9,6 +11,10 @@ export class Board {
     this.resultElement = resultElement;
     this.network = network;
     this.ctx = canvasElement.getContext('2d');
+    this.ctx.strokeStyle = '#fff';
+    this.ctx.lineWidth = STROKE_WIDTH;
+    this.ctx.lineCap = 'round';
+    this.ctx.lineJoin = 'round';
     this.isDrawing = false;
 
     canvasElement.addEventListener('pointerdown', (event) => this.startDrawing(event));
@@ -22,43 +28,7 @@ export class Board {
   reset() {
     this.ctx.fillStyle = '#000';
     this.ctx.fillRect(0, 0, this.canvasElement.width, this.canvasElement.height);
-    this.ctx.strokeStyle = '#fff';
-    this.ctx.lineWidth = STROKE_WIDTH;
-    this.ctx.lineCap = 'round';
-    this.ctx.lineJoin = 'round';
     this.resultElement.textContent = '';
-  }
-
-  predict() {
-    if (!this.network) return;
-
-    const input = this.readInput();
-    const { probabilities } = this.network.forward(input);
-    const digit = indexOfHighestValue(probabilities);
-    const probability = probabilities[digit];
-
-    console.log(`this is ${digit} and probability is ${probability}`);
-    this.resultElement.textContent = probability > 0.75
-      ? `this is ${digit}`
-      : 'I don\'t know';
-  }
-
-  readInput() {
-    const small = document.createElement('canvas');
-    small.width = INPUT_SIZE;
-    small.height = INPUT_SIZE;
-
-    const smallCtx = small.getContext('2d');
-    smallCtx.drawImage(this.canvasElement, 0, 0, INPUT_SIZE, INPUT_SIZE);
-
-    const { data } = smallCtx.getImageData(0, 0, INPUT_SIZE, INPUT_SIZE);
-    const input = [];
-
-    for (let pixel = 0; pixel < INPUT_SIZE * INPUT_SIZE; pixel++) {
-      input.push(data[pixel * 4] / 255);
-    }
-
-    return input;
   }
 
   startDrawing(event) {
@@ -81,5 +51,114 @@ export class Board {
 
     this.isDrawing = false;
     this.predict();
+  }
+
+  predict() {
+    if (!this.network) return;
+
+    const input = this.readInput();
+    const { probabilities } = this.network.forward(input);
+    const digit = indexOfHighestValue(probabilities);
+    const probability = probabilities[digit];
+
+    console.log(`this is ${digit} and probability is ${probability}`);
+    this.resultElement.textContent = probability > MIN_PROBABILITY_TO_PREDICT
+      ? `this is ${digit}`
+      : 'I don\'t know';
+  }
+
+  readInput() {
+    const centeredDrawing = this.createCenteredDrawing();
+    const networkInputCanvas = this.resizeToInputSize(centeredDrawing);
+    return this.convertToNormalizedInput(networkInputCanvas);
+  }
+
+  createCenteredDrawing() {
+    const bounds = this.findDrawingBounds();
+
+    if (!bounds) return this.canvasElement;
+
+    const { width, height } = this.canvasElement;
+    const drawingCenterX = (bounds.minX + bounds.maxX) / 2;
+    const drawingCenterY = (bounds.minY + bounds.maxY) / 2;
+    const canvasCenterX = width / 2;
+    const canvasCenterY = height / 2;
+
+    const shiftX = canvasCenterX - drawingCenterX;
+    const shiftY = canvasCenterY - drawingCenterY;
+
+    const centeredCanvas = document.createElement('canvas');
+    centeredCanvas.width = width;
+    centeredCanvas.height = height;
+
+    const centeredCtx = centeredCanvas.getContext('2d');
+    centeredCtx.fillStyle = '#000';
+    centeredCtx.fillRect(0, 0, width, height);
+    centeredCtx.drawImage(this.canvasElement, shiftX, shiftY);
+
+    return centeredCanvas;
+  }
+
+  findDrawingBounds() {
+    const { width, height } = this.canvasElement;
+    const { data } = this.ctx.getImageData(0, 0, width, height);
+
+    let bounds = null;
+
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const pixelIndex = y * width + x;
+        // each pixel has 4 values: red, green, blue, alpha
+        const redIndex = pixelIndex * 4;
+        // const greenIndex = pixelIndex * 4 + 1;
+        // const blueIndex = pixelIndex * 4 + 2;
+        // const alphaIndex = pixelIndex * 4 + 3;
+        const redChannel = data[redIndex]; // min 0, max 255
+        const isDrawnPixel = redChannel > DRAWN_PIXEL_THRESHOLD;
+
+        if (!isDrawnPixel) {
+          continue;
+        }
+
+        if (!bounds) {
+          bounds = { minX: x, minY: y, maxX: x, maxY: y };
+          continue;
+        }
+
+        bounds.minX = Math.min(bounds.minX, x);
+        bounds.minY = Math.min(bounds.minY, y);
+        bounds.maxX = Math.max(bounds.maxX, x);
+        bounds.maxY = Math.max(bounds.maxY, y);
+      }
+    }
+
+    return bounds;
+  }
+
+  resizeToInputSize(canvas) {
+    const smallCanvas = document.createElement('canvas');
+    smallCanvas.width = INPUT_SIZE;
+    smallCanvas.height = INPUT_SIZE;
+
+    const smallCtx = smallCanvas.getContext('2d');
+    smallCtx.drawImage(canvas, 0, 0, INPUT_SIZE, INPUT_SIZE);
+
+    return smallCanvas;
+  }
+
+  convertToNormalizedInput(canvas) {
+    const ctx = canvas.getContext('2d');
+    const { data } = ctx.getImageData(0, 0, INPUT_SIZE, INPUT_SIZE);
+
+    const normalizedInput = [];
+
+    for (let pixel = 0; pixel < INPUT_SIZE * INPUT_SIZE; pixel++) {
+      const redIndex = pixel * 4;
+      const redChannel = data[redIndex]; // min 0, max 255
+      const normalizedValue = redChannel / 255; // min 0, max 1
+      normalizedInput.push(normalizedValue);
+    }
+
+    return normalizedInput;
   }
 }
