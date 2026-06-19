@@ -4,6 +4,8 @@ const STROKE_WIDTH = 20;
 const INPUT_SIZE = 28;
 const DRAWN_PIXEL_THRESHOLD = 10;
 const MIN_PROBABILITY_TO_PREDICT = 0.8;
+const MIN_FILL_RATIO = 0.6;
+const MAX_FILL_RATIO = 0.7;
 
 export class Board {
   constructor(canvasElement, resultElement, network) {
@@ -68,24 +70,27 @@ export class Board {
   }
 
   readInput() {
-    const centeredDrawing = this.createCenteredDrawing();
+    const centeredDrawing = this.createCenteredScaledDrawing();
     const networkInputCanvas = this.resizeToInputSize(centeredDrawing);
     return this.convertToNormalizedInput(networkInputCanvas);
   }
 
-  createCenteredDrawing() {
+  createCenteredScaledDrawing() {
     const bounds = this.findDrawingBounds();
 
     if (!bounds) return this.canvasElement;
 
     const { width, height } = this.canvasElement;
-    const drawingCenterX = (bounds.minX + bounds.maxX) / 2;
-    const drawingCenterY = (bounds.minY + bounds.maxY) / 2;
-    const canvasCenterX = width / 2;
-    const canvasCenterY = height / 2;
+    const canvasSize = width || height;
+    const drawingWidth = bounds.width;
+    const drawingHeight = bounds.height;
+    const drawingSize = Math.max(bounds.width, bounds.height);
+    const scale = this.calculateScaleFactor(drawingSize, canvasSize);
 
-    const shiftX = canvasCenterX - drawingCenterX;
-    const shiftY = canvasCenterY - drawingCenterY;
+    const scaledWidth = drawingWidth * scale;
+    const scaledHeight = drawingHeight * scale;
+    const destinationX = (width - scaledWidth) / 2;
+    const destinationY = (height - scaledHeight) / 2;
 
     const centeredCanvas = document.createElement('canvas');
     centeredCanvas.width = width;
@@ -94,7 +99,11 @@ export class Board {
     const centeredCtx = centeredCanvas.getContext('2d');
     centeredCtx.fillStyle = '#000';
     centeredCtx.fillRect(0, 0, width, height);
-    centeredCtx.drawImage(this.canvasElement, shiftX, shiftY);
+    centeredCtx.drawImage(
+      this.canvasElement,
+      bounds.minX, bounds.minY, drawingWidth, drawingHeight,
+      destinationX, destinationY, scaledWidth, scaledHeight,
+    );
 
     return centeredCanvas;
   }
@@ -129,10 +138,24 @@ export class Board {
         bounds.minY = Math.min(bounds.minY, y);
         bounds.maxX = Math.max(bounds.maxX, x);
         bounds.maxY = Math.max(bounds.maxY, y);
+        bounds.width = bounds.maxX - bounds.minX + 1;
+        bounds.height = bounds.maxY - bounds.minY + 1;
       }
     }
 
     return bounds;
+  }
+
+  calculateScaleFactor(drawingSize, canvasSize) {
+    const fillRatio = drawingSize / canvasSize;
+
+    if (fillRatio < MIN_FILL_RATIO) {
+      return (canvasSize * MIN_FILL_RATIO) / drawingSize;
+    }
+    if (fillRatio > MAX_FILL_RATIO) {
+      return (canvasSize * MAX_FILL_RATIO) / drawingSize;
+    }
+    return 1;
   }
 
   resizeToInputSize(canvas) {
